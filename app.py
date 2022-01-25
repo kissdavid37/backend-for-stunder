@@ -1,3 +1,4 @@
+#from crypt import methods
 from enum import unique
 from hashlib import md5
 from importlib import resources
@@ -10,8 +11,11 @@ import uuid
 import jwt
 import datetime
 from flask_cors import CORS,cross_origin
+import sqlite3 as sql
+import validators
 #https://www.youtube.com/watch?v=WxGBoY5iNXY
 #https://www.youtube.com/watch?v=2VXQL3Pk0Bs
+#https://stackoverflow.com/questions/6699360/flask-sqlalchemy-update-a-rows-information
 
 app=Flask(__name__)
 CORS(app)
@@ -91,7 +95,6 @@ def get_one_user(current_user,public_id):
     if not user:
         return jsonify({'message':'No user found!'})
     user_data={}
-    user_data={}
     user_data['public_id']=user.public_id
     user_data['name']=user.name
     user_data['password']=user.password
@@ -99,19 +102,37 @@ def get_one_user(current_user,public_id):
     
     return jsonify({'user':user_data})
 
-@app.route('/user',methods=['POST'])
-@token_required
-def create_user(current_user):
-    if not current_user.admin:
-        return jsonify({'message': 'Cannot perform that function!'})
-    data = request.get_json()
-    hashed_password = generate_password_hash(data['password'], method='sha256')
+# @app.route('/create',methods=['POST'])
+# #@token_required
+# def create_user():#current_user):
+#     # if not current_user.admin:
+#     #     return jsonify({'message': 'Cannot perform that function!'})
+#     data = request.get_json()
+#     hashed_password = generate_password_hash(data['password'], method='sha256')
 
-    new_user = User(public_id=str(uuid.uuid4()), name=data['name'], password=hashed_password, admin=False)
-    db.session.add(new_user)
-    db.session.commit()
+#     new_user = User(public_id=str(uuid.uuid4()), name=data['name'], password=hashed_password, admin=False)
+#     db.session.add(new_user)
+#     db.session.commit()
     
-    return jsonify({'message':'New user created'})
+#     return jsonify({'message':'New user created'})
+
+@app.route('/register',methods=['POST'])
+def register():
+    name=request.json['name']
+    password=request.json['password']
+    hashed_password = generate_password_hash(password, method='sha256')
+    if len(password)<6:
+        return make_response('Could not verify',400,{'WWWW-Authenticate':'Basic realm="Rövid jelszó!"'})
+    if User.query.filter_by(name=name).first() is not None:
+         return make_response('Could not verify',409,{'WWWW-Authenticate':'Basic realm="Foglalt email!"'})
+     
+     
+    user=User(public_id=str(uuid.uuid4()),name=name,password=hashed_password,admin=False)
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({'message':"Felhasználó regisztrált",'name':name,'password':password})
+    
+    
 
 @app.route('/user/<public_id>',methods=['PUT'])
 @token_required
@@ -141,7 +162,7 @@ def delete_user(current_user,public_id):
     db.session.commit()
     return jsonify({'message':'The user has been deleted'})
 
-@app.route('/login', methods=['GET'])
+@app.route('/login', methods=['POST'])
 @cross_origin()
 def login():
     auth=request.authorization
@@ -229,6 +250,9 @@ def delete_question(current_user,question_id):
     db.session.commit()
     
     return jsonify({'message':'Question has deleted'})
+
+
+
 
   
     
