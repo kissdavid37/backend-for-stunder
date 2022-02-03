@@ -4,6 +4,7 @@ from hashlib import md5
 from importlib import resources
 from importlib.metadata import metadata
 import json
+from select import select
 from xmlrpc.client import Boolean
 from flask import Flask, jsonify, make_response, request, session
 import sqlalchemy
@@ -16,8 +17,9 @@ import datetime
 from flask_cors import CORS,cross_origin
 import sqlite3 as sql
 import validators
-from sqlalchemy import Integer, Table,Column,MetaData,Boolean, create_engine,String
+from sqlalchemy import Integer, Table,Column,MetaData,Boolean, create_engine,String,select
 from sqlalchemy.ext.declarative import declarative_base
+
 #https://www.youtube.com/watch?v=WxGBoY5iNXY
 #https://www.youtube.com/watch?v=2VXQL3Pk0Bs
 #https://stackoverflow.com/questions/6699360/flask-sqlalchemy-update-a-rows-information
@@ -61,7 +63,7 @@ def create_question_model(tablename):
     table=Table(
         tablename,meta,
         Column('id',Integer,primary_key=True),
-        Column('user_name',String),
+        Column('user_name',String,unique=True),
         Column('ask',Boolean,default=False),
         Column('help',Boolean,default=False),
         
@@ -286,16 +288,76 @@ def get_user_matches(current_user):
 def ask(current_user,question_text):
     auth=request.authorization
     engine=create_engine('sqlite:///stunder_second.db',echo=True)
+    table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
+    
+    if not auth or not auth.username or not auth.password:
+        return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
+    
+    question=Question.query.filter_by(text=question_text).first()
+    if not question:
+        return jsonify({'message':'No question found!'})
+
+    quer=engine.execute(select(table.c.ask).where(table.c.user_name==current_user.name)).fetchone()
+    if quer is None:
+        engine.execute(table.insert().values(user_name=current_user.name,ask=True,help=False))
+        return jsonify({'message':'The question is asked,még nincs ilyen rekord'})
+        
+    elif quer[0] is True :
+        return jsonify({'message':'The question is already asked'})
+   
+    update_statement=table.update().where(table.c.user_name==current_user.name).values(ask=True)
+    engine.execute(update_statement)
+    return jsonify({'message':'The question is asked'})
+    
+
+#ide még kell az az eset ha már vissza van vonva a kérdés
+@app.route('/ask/<question_text>', methods=['PUT'])
+@token_required
+def revert_ask(current_user,question_text):
+    auth=request.authorization
+    engine=create_engine('sqlite:///stunder_second.db',echo=True)
+    table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
     if not auth or not auth.username or not auth.password:
         return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
     question=Question.query.filter_by(text=question_text).first()
     if not question:
         return jsonify({'message':'No question found!'})
-    table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
-    engine.execute(table.insert().values(user_name=current_user.name,ask=True,help=False))
-    return jsonify({'message':'The question is asked'})
+    quer=engine.execute(select(table.c.ask).where(table.c.user_name==current_user.name)).fetchone()
+    if quer is None:
+        engine.execute(table.insert().values(user_name=current_user.name,ask=True,help=False))
+        return jsonify({'message':'Nincs kérdés ezzel a felhasználóval'})
     
+    if quer[0] is False:
+        return jsonify({'message':'Nincs mit visszavonni mert nincs kérdezve'})
+    update_statement=table.update().where(table.c.user_name==current_user.name).values(ask=False)
+    engine.execute(update_statement)
+    return jsonify({'message':'The question is reverted'})
+    
+@app.route('/help/<question_text>', methods=['GET'])
+@token_required
+def help(current_user,question_text):
+    auth=request.authorization
+    engine=create_engine('sqlite:///stunder_second.db',echo=True)
+    table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
+    
+    if not auth or not auth.username or not auth.password:
+        return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
+    
+    question=Question.query.filter_by(text=question_text).first()
+    if not question:
+        return jsonify({'message':'No question found!'})
 
+    quer=engine.execute(select(table.c.help).where(table.c.user_name==current_user.name)).fetchone()
+    if quer is None:
+        engine.execute(table.insert().values(user_name=current_user.name,ask=False,help=True))
+        return jsonify({'message':'The help is active,még nincs ilyen rekord'})
+        
+    elif quer[0] is True :
+        return jsonify({'message':'The help is already offered'})
+   
+    update_statement=table.update().where(table.c.user_name==current_user.name).values(help=True)
+    engine.execute(update_statement)
+    return jsonify({'message':'The help is offered'})
 
 
 
