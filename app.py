@@ -1,10 +1,15 @@
 #from crypt import methods
+from cgitb import text
 from enum import unique
 from hashlib import md5
 from importlib import resources
 from importlib.metadata import metadata
 import json
+from os import stat
 from select import select
+from tkinter.messagebox import QUESTION
+from tkinter.tix import Select
+from turtle import update
 from xmlrpc.client import Boolean
 from flask import Flask, jsonify, make_response, request, session
 import sqlalchemy
@@ -17,7 +22,7 @@ import datetime
 from flask_cors import CORS,cross_origin
 import sqlite3 as sql
 import validators
-from sqlalchemy import Integer, Table,Column,MetaData,Boolean, create_engine,String,select
+from sqlalchemy import ForeignKey, Integer, Table,Column,MetaData,Boolean, create_engine,String, insert, null,select,update
 from sqlalchemy.ext.declarative import declarative_base
 
 #https://www.youtube.com/watch?v=WxGBoY5iNXY
@@ -33,7 +38,7 @@ CORS(app)
 #     NON="None of them"
 
 app.config['SECRET_KEY']='thisissecret'
-app.config['SQLALCHEMY_DATABASE_URI'] ='sqlite:///stunder_second.db'
+app.config['SQLALCHEMY_DATABASE_URI'] ='sqlite:///stunder_database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS']=True
 
 db=SQLAlchemy(app)
@@ -50,12 +55,16 @@ class User(db.Model):
     
 class Question(db.Model):
     id=db.Column(db.Integer,primary_key=True)
-    text=db.Column(db.String(50))
-    ask=db.Column(db.Boolean,default=False)
-    help=db.Column(db.Boolean,default=False)
-    user_id=db.Column(db.Integer)
+    text=db.Column(db.String(50),ForeignKey('subject.text'),nullable=False)
+    asker=db.Column(db.String(50),default=False)
+    helper=db.Column(db.String(50))
+    status=db.Column(db.Boolean,default=False)
     
-    
+class Subject(db.Model):
+    id=db.Column(db.Integer,primary_key=True,)
+    text=db.Column(db.String(50),unique=True,nullable=False)
+       
+        
 def create_question_model(tablename):
     engine=create_engine('sqlite:///stunder_second.db',echo=True)
     meta=MetaData()
@@ -219,17 +228,15 @@ def login():
 @token_required
 def get_all_question(self):#current_user):
     #questions=Question.query.filter_by(user_id=current_user.id).all()
-    questions=Question.query.all()
+    subjects=Subject.query.all()
     output=[]
-    for question in questions:
-        question_data={}
-        question_data['id']=question.id
-        question_data['text']=question.text
-        question_data['ask']=question.ask
-        question_data['help']=question.help
-        output.append(question_data)
+    for subject in subjects:
+        subject_data={}
+        subject_data['id']=subject.id
+        subject_data['text']=subject.text
+        output.append(subject_data)
     
-    return jsonify({'questions': output})
+    return jsonify({'subjects': output})
 
 @app.route('/question/<question_id>',methods=['GET'])
 @token_required
@@ -249,9 +256,9 @@ def get_one_question(current_user,question_id):
 
 @app.route('/question', methods=['POST'])
 @token_required
-def create_question(current_user):
+def create_subject(current_user):
     data=request.get_json()
-    new_question=Question(text=data['text'],ask=False,help=False,user_id=current_user.id)
+    new_question=Subject(text=data['text'])
     if Question.query.filter_by(text=data['text']).first() is not None :
           return make_response('Could not add question',409,{'WWWW-Authenticate':'Basic realm="Question already exists!"'})
     else:
@@ -287,27 +294,38 @@ def get_user_matches(current_user):
 @token_required
 def ask(current_user,question_text):
     auth=request.authorization
-    engine=create_engine('sqlite:///stunder_second.db',echo=True)
-    table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
+    engine=create_engine('sqlite:///stunder_database.db',echo=True)
+    #table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
     
     if not auth or not auth.username or not auth.password:
         return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
     
-    question=Question.query.filter_by(text=question_text).first()
-    if not question:
-        return jsonify({'message':'No question found!'})
-
-    quer=engine.execute(select(table.c.ask).where(table.c.user_name==current_user.name)).fetchone()
+    subject=Subject.query.filter_by(text=question_text).first()
+    if not subject:
+        return jsonify({'message':'No subject found!'})
+    
+    quer=engine.execute(select(Question.helper).where(Question.text==question_text).where(Question.asker=='')).fetchone()
     if quer is None:
-        engine.execute(table.insert().values(user_name=current_user.name,ask=True,help=False))
-        return jsonify({'message':'The question is asked,még nincs ilyen rekord'})
-        
-    elif quer[0] is True :
-        return jsonify({'message':'The question is already asked'})
-   
-    update_statement=table.update().where(table.c.user_name==current_user.name).values(ask=True)
+        engine.execute(insert(Question).values(text=question_text,asker=current_user.name,status=True))
+        return jsonify({'message':'None volt ezért uj recordot szurtam be'})
+    
+    
+    update_statement=update(Question).where(Question.asker==null or Question.asker=='').values(asker=current_user.name)
     engine.execute(update_statement)
-    return jsonify({'message':'The question is asked'})
+    return jsonify({'message':'A kérdésed egy segítőhöz került'})
+    
+
+    # quer=engine.execute(select(table.c.ask).where(table.c.user_name==current_user.name)).fetchone()
+    # if quer is None:
+    #     engine.execute(table.insert().values(user_name=current_user.name,ask=True,help=False))
+    #     return jsonify({'message':'The question is asked,még nincs ilyen rekord'})
+        
+    # elif quer[0] is True :
+    #     return jsonify({'message':'The question is already asked'})
+   
+    # update_statement=table.update().where(table.c.user_name==current_user.name).values(ask=True)
+    # engine.execute(update_statement)
+    # return jsonify({'message':'The question is asked'})
     
 
 #ide még kell az az eset ha már vissza van vonva a kérdés
@@ -347,7 +365,7 @@ def help(current_user,question_text):
     if not question:
         return jsonify({'message':'No question found!'})
 
-    quer=engine.execute(select(table.c.help).where(table.c.user_name==current_user.name)).fetchone()
+    quer=engine.execute(select(table.c.help).where(table.c.user_name==current_user)).fetchone()
     if quer is None:
         engine.execute(table.insert().values(user_name=current_user.name,ask=False,help=True))
         return jsonify({'message':'The help is active,még nincs ilyen rekord'})
