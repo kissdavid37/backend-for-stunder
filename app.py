@@ -296,47 +296,48 @@ def ask(current_user,question_text):
     engine=create_engine('sqlite:///stunder_database.db',echo=True)
     
     if not auth or not auth.username or not auth.password:
-        return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
-    
+        return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})    
     subject=Subject.query.filter_by(text=question_text).first()
+    
     if not subject:
         return jsonify({'message':'No subject found!'})
-    
+    haveask=engine.execute(select(Question.id).where(Question.text==question_text).where(Question.asker==current_user.name).where(Question.helper=='')).fetchone()
+    if haveask:
+         return make_response('Could not add question',409,{'WWWW-Authenticate':'Basic realm="You already have a question"'})
     quer=engine.execute(select(Question.helper).where(Question.text==question_text).where(Question.asker=='')).fetchone()
     if quer is None:
         engine.execute(insert(Question).values(text=question_text,asker=current_user.name,status=True))
-        return jsonify({'message':'None volt ezért uj recordot szurtam be'})
-      #először megkeresem azt az id-t amelynél üres 
-    s=engine.execute(select(Question.id).where(Question.asker=='').where(Question.text==question_text)).first()
-    print(s[0])
-    update_statement=update(Question).where(Question.id==s[0]).values(asker=current_user.name)
-    engine.execute(update_statement)
-    return jsonify({'message':'A kérdésed egy segítőhöz került'})
+        return jsonify({'message':'New Record inserted'})
+    else:
+        s=engine.execute(select(Question.id).where(Question.asker=='').where(Question.text==question_text)).first()
+        update_statement=update(Question).where(Question.id==s[0]).values(asker=current_user.name)
+        engine.execute(update_statement)
+        return jsonify({'message':'Your question is sent to helper'})
     
     
 
 #ide még kell az az eset ha már vissza van vonva a kérdés
-@app.route('/ask/<question_text>', methods=['PUT'])
-@token_required
-def revert_ask(current_user,question_text):
-    auth=request.authorization
-    engine=create_engine('sqlite:///stunder_second.db',echo=True)
-    table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
-    if not auth or not auth.username or not auth.password:
-        return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
-    question=Question.query.filter_by(text=question_text).first()
-    if not question:
-        return jsonify({'message':'No question found!'})
-    quer=engine.execute(select(table.c.ask).where(table.c.user_name==current_user.name)).fetchone()
-    if quer is None:
-        engine.execute(table.insert().values(user_name=current_user.name,ask=True,help=False))
-        return jsonify({'message':'Nincs kérdés ezzel a felhasználóval'})
+# @app.route('/ask/<question_text>', methods=['PUT'])
+# @token_required
+# def revert_ask(current_user,question_text):
+#     auth=request.authorization
+#     engine=create_engine('sqlite:///stunder_second.db',echo=True)
+#     table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
+#     if not auth or not auth.username or not auth.password:
+#         return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
+#     question=Question.query.filter_by(text=question_text).first()
+#     if not question:
+#         return jsonify({'message':'No question found!'})
+#     quer=engine.execute(select(table.c.ask).where(table.c.user_name==current_user.name)).fetchone()
+#     if quer is None:
+#         engine.execute(table.insert().values(user_name=current_user.name,ask=True,help=False))
+#         return jsonify({'message':'Nincs kérdés ezzel a felhasználóval'})
     
-    if quer[0] is False:
-        return jsonify({'message':'Nincs mit visszavonni mert nincs kérdezve'})
-    update_statement=table.update().where(table.c.user_name==current_user.name).values(ask=False)
-    engine.execute(update_statement)
-    return jsonify({'message':'The question is reverted'})
+#     if quer[0] is False:
+#         return jsonify({'message':'Nincs mit visszavonni mert nincs kérdezve'})
+#     update_statement=table.update().where(table.c.user_name==current_user.name).values(ask=False)
+#     engine.execute(update_statement)
+#     return jsonify({'message':'The question is reverted'})
     
 @app.route('/help/<question_text>', methods=['GET'])
 @token_required
