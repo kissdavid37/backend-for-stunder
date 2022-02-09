@@ -11,8 +11,10 @@ from select import select
 from tkinter.messagebox import QUESTION
 from tkinter.tix import Select
 from turtle import update
+from venv import create
 from xmlrpc.client import Boolean
 from flask import Flask, jsonify, make_response, request, session
+import socketio
 import sqlalchemy
 from werkzeug.security import generate_password_hash,check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -22,7 +24,6 @@ import jwt
 import datetime
 from flask_cors import CORS,cross_origin
 from sqlalchemy import ForeignKey, Integer, Table,Column,MetaData,Boolean, create_engine,String, insert, null,select,update,insert
-from sqlalchemy.ext.declarative import declarative_base
 
 #https://www.youtube.com/watch?v=WxGBoY5iNXY
 #https://www.youtube.com/watch?v=2VXQL3Pk0Bs
@@ -39,6 +40,12 @@ CORS(app)
 app.config['SECRET_KEY']='thisissecret'
 app.config['SQLALCHEMY_DATABASE_URI'] ='sqlite:///stunder_database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS']=True
+
+
+
+
+
+
 
 db=SQLAlchemy(app)
 
@@ -312,6 +319,9 @@ def ask(current_user,question_text):
         s=engine.execute(select(Question.id).where(Question.asker=='').where(Question.text==question_text)).first()
         update_statement=update(Question).where(Question.id==s[0]).values(asker=current_user.name)
         engine.execute(update_statement)
+        meta=MetaData()
+        table=Table(s[0],meta,Column('id',Integer,primary_key=True),Column('name',String),Column('text',String))
+        meta.create_all(engine)
         return jsonify({'message':'Your question is sent to helper'})
     
     
@@ -358,14 +368,21 @@ def help(current_user,question_text):
         return jsonify({'message':'None volt ezért uj recordot szurtam be'})
       #először megkeresem azt az id-t amelynél üres 
     s=engine.execute(select(Question.id).where(Question.helper=='').where(Question.text==question_text)).first()
-    print(s[0])
+    
     update_statement=update(Question).where(Question.id==s[0]).values(helper=current_user.name)
     engine.execute(update_statement)
-    return jsonify({'message':'Találtunk egy segítségkérőt'})
+    meta=MetaData()
+    table=Table(s[0],meta,Column('id',Integer,primary_key=True),Column('name',String),Column('text',String))
+    meta.create_all(engine)
+    return jsonify({'message':'Találtunk egy segítségkérőt,létrejött a chat'})
+
+
+
+
 
 
 
   
     
 if __name__ =='__main__':
-    app.run()#debug=True)
+    app.run(debug=True)
