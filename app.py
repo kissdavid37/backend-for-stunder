@@ -10,10 +10,13 @@ from os import stat
 from select import select
 from tkinter.messagebox import QUESTION
 from tkinter.tix import Select
-from turtle import update
+from turtle import title, update
+from venv import create
 from xmlrpc.client import Boolean
 from flask import Flask, jsonify, make_response, request, session
+import socketio
 import sqlalchemy
+import werkzeug
 from werkzeug.security import generate_password_hash,check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
@@ -21,8 +24,8 @@ import uuid
 import jwt
 import datetime
 from flask_cors import CORS,cross_origin
-from sqlalchemy import ForeignKey, Integer, Table,Column,MetaData,Boolean, create_engine,String, insert, null,select,update,insert
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import ForeignKey, Integer, Table,Column,MetaData,Boolean, create_engine,String, insert, null,select, true,update,insert
+import requests
 
 #https://www.youtube.com/watch?v=WxGBoY5iNXY
 #https://www.youtube.com/watch?v=2VXQL3Pk0Bs
@@ -39,6 +42,12 @@ CORS(app)
 app.config['SECRET_KEY']='thisissecret'
 app.config['SQLALCHEMY_DATABASE_URI'] ='sqlite:///stunder_database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS']=True
+
+
+
+
+
+
 
 db=SQLAlchemy(app)
 
@@ -216,7 +225,7 @@ def login():
         return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Bad credentials!"'})
 
     if check_password_hash(user.password,auth.password):
-        token=jwt.encode({'public_id':user.public_id,'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)},app.config['SECRET_KEY'])
+        token=jwt.encode({'public_id':user.public_id,'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60)},app.config['SECRET_KEY'])
         
         return jsonify({'token': token.decode('UTF-8')})
     
@@ -309,36 +318,22 @@ def ask(current_user,question_text):
         engine.execute(insert(Question).values(text=question_text,asker=current_user.name,status=True))
         return jsonify({'message':'New Record inserted'})
     else:
-        s=engine.execute(select(Question.id).where(Question.asker=='').where(Question.text==question_text)).first()
-        update_statement=update(Question).where(Question.id==s[0]).values(asker=current_user.name)
+        empty_asker_id=engine.execute(select(Question.id).where(Question.asker=='').where(Question.text==question_text)).first()
+        #itt jön létre a chat
+        #megkeresem azt a sort ahol üres a kérdező de van bent már segítő
+        empty_asker=engine.execute(select(Question.helper).where(Question.asker=='').where(Question.text==question_text)).first()
+
+       
+        create_chat(current_user.name,empty_asker[0],question_text,auth.password)
+        update_statement=update(Question).where(Question.id==empty_asker_id[0]).values(asker=current_user.name)
         engine.execute(update_statement)
+        
         return jsonify({'message':'Your question is sent to helper'})
     
     
 
-#ide még kell az az eset ha már vissza van vonva a kérdés
-# @app.route('/ask/<question_text>', methods=['PUT'])
-# @token_required
-# def revert_ask(current_user,question_text):
-#     auth=request.authorization
-#     engine=create_engine('sqlite:///stunder_second.db',echo=True)
-#     table=sqlalchemy.Table(question_text,sqlalchemy.MetaData(),autoload_with=engine)
-#     if not auth or not auth.username or not auth.password:
-#         return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
-#     question=Question.query.filter_by(text=question_text).first()
-#     if not question:
-#         return jsonify({'message':'No question found!'})
-#     quer=engine.execute(select(table.c.ask).where(table.c.user_name==current_user.name)).fetchone()
-#     if quer is None:
-#         engine.execute(table.insert().values(user_name=current_user.name,ask=True,help=False))
-#         return jsonify({'message':'Nincs kérdés ezzel a felhasználóval'})
-    
-#     if quer[0] is False:
-#         return jsonify({'message':'Nincs mit visszavonni mert nincs kérdezve'})
-#     update_statement=table.update().where(table.c.user_name==current_user.name).values(ask=False)
-#     engine.execute(update_statement)
-#     return jsonify({'message':'The question is reverted'})
-    
+
+  #ide még kell a chat funkció ugyanugy mint az előző függvényben  
 @app.route('/help/<question_text>', methods=['GET'])
 @token_required
 def help(current_user,question_text):
@@ -357,15 +352,35 @@ def help(current_user,question_text):
         engine.execute(insert(Question).values(text=question_text,helper=current_user.name,status=True))
         return jsonify({'message':'None volt ezért uj recordot szurtam be'})
       #először megkeresem azt az id-t amelynél üres 
-    s=engine.execute(select(Question.id).where(Question.helper=='').where(Question.text==question_text)).first()
-    print(s[0])
-    update_statement=update(Question).where(Question.id==s[0]).values(helper=current_user.name)
+    empty_asker_id=engine.execute(select(Question.id).where(Question.helper=='').where(Question.text==question_text)).first()
+    
+    update_statement=update(Question).where(Question.id==empty_asker_id[0]).values(helper=current_user.name)
+    empty_helper=engine.execute(select(Question.asker).where(Question.helper=='').where(Question.text==question_text)).first()
+
+        #user_pw=engine.execute(select(User.password).where(Question.asker=='').where(Question.text==question_text)).first()
+    create_chat(current_user.name,empty_helper[0],question_text,auth.password)
     engine.execute(update_statement)
-    return jsonify({'message':'Találtunk egy segítségkérőt'})
+   
+    return jsonify({'message':'Találtunk egy segítségkérőt,létrejött a chat'})
+
+def create_chat(current_user,second_user,question_text,password):
+    r=requests.put('https://api.chatengine.io/chats/',
+                   data={
+                       "usernames":[second_user],
+                       "title":question_text,
+                       "is_direct_chat":False
+                   },
+                   #ez itt titkos kell legyen vagy egy adatbázisbol fogom kiolvasni
+                   headers={"Project-ID":"a6603778-028c-4652-9a96-adef96e3e8cd","User-Name":current_user,"User-Secret":password}
+    )
+
+
+
+
 
 
 
   
     
 if __name__ =='__main__':
-    app.run()#debug=True)
+    app.run(debug=True)
