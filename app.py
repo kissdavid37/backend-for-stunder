@@ -320,10 +320,11 @@ def ask(current_user,question_text):
     else:
         empty_asker_id=engine.execute(select(Question.id).where(Question.asker=='').where(Question.text==question_text)).first()
         #itt jön létre a chat
-        empty_askers_helper=engine.execute(select(Question.helper).where(Question.asker=='').where(Question.text==question_text)).first()
+        #megkeresem azt a sort ahol üres a kérdező de van bent már segítő
+        empty_asker=engine.execute(select(Question.helper).where(Question.asker=='').where(Question.text==question_text)).first()
 
-        #user_pw=engine.execute(select(User.password).where(Question.asker=='').where(Question.text==question_text)).first()
-        create_chat(current_user.name,empty_askers_helper[0],question_text,auth.password)
+       
+        create_chat(current_user.name,empty_asker[0],question_text,auth.password)
         update_statement=update(Question).where(Question.id==empty_asker_id[0]).values(asker=current_user.name)
         engine.execute(update_statement)
         
@@ -354,6 +355,10 @@ def help(current_user,question_text):
     empty_asker_id=engine.execute(select(Question.id).where(Question.helper=='').where(Question.text==question_text)).first()
     
     update_statement=update(Question).where(Question.id==empty_asker_id[0]).values(helper=current_user.name)
+    empty_helper=engine.execute(select(Question.asker).where(Question.helper=='').where(Question.text==question_text)).first()
+
+        #user_pw=engine.execute(select(User.password).where(Question.asker=='').where(Question.text==question_text)).first()
+    create_chat(current_user.name,empty_helper[0],question_text,auth.password)
     engine.execute(update_statement)
    
     return jsonify({'message':'Találtunk egy segítségkérőt,létrejött a chat'})
