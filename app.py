@@ -27,9 +27,7 @@ from flask_cors import CORS,cross_origin
 from sqlalchemy import ForeignKey, Integer, Table,Column,MetaData,Boolean, create_engine,String, insert, null,select, true,update,insert
 import requests
 
-#https://www.youtube.com/watch?v=WxGBoY5iNXY
-#https://www.youtube.com/watch?v=2VXQL3Pk0Bs
-#https://stackoverflow.com/questions/6699360/flask-sqlalchemy-update-a-rows-information
+
 
 app=Flask(__name__)
 CORS(app)
@@ -42,12 +40,6 @@ CORS(app)
 app.config['SECRET_KEY']='thisissecret'
 app.config['SQLALCHEMY_DATABASE_URI'] ='sqlite:///stunder_database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS']=True
-
-
-
-
-
-
 
 db=SQLAlchemy(app)
 
@@ -117,10 +109,8 @@ def token_required(f):
 @app.route('/user',methods=['GET'])
 @token_required
 def get_all_users(current_user):
-    
     if not current_user.admin:
         return jsonify({'message': 'Cannot perform that function!'})
-    
     
     users=User.query.all()
     output=[]
@@ -134,18 +124,13 @@ def get_all_users(current_user):
         user_data['description']=user.description
         user_data['admin']=user.admin
         output.append(user_data)
-    
-    
-    
+      
     return jsonify({'users': output})
 
-@app.route('/user/<public_id>',methods=['GET'])
+@app.route('/profile',methods=['GET'])
 @token_required
-def get_one_user(current_user,public_id):
-    if not current_user.admin:
-        return jsonify({'message': 'Cannot perform that function!'})
-    
-    user=User.query.filter_by(public_id=public_id).first()
+def get_one_user(current_user):
+    user=User.query.filter_by(name=current_user.name).first()
     if not user:
         return jsonify({'message':'No user found!'})
     user_data={}
@@ -174,11 +159,11 @@ def register():
          return make_response('Could not verify',409,{'WWWW-Authenticate':'Basic realm="Foglalt felhasználónév!"'})
     elif User.query.filter_by(email=email).first() is not None:
          return make_response('Could not verify',409,{'WWWW-Authenticate':'Basic realm="Foglalt email!"'})
-     
-     
+      
     user=User(public_id=str(uuid.uuid4()),name=name,email=email,password=hashed_password,gender=gender,description=description,admin=False)
     db.session.add(user)
     db.session.commit()
+    
     return jsonify({'message':"Felhasználó regisztrált",'name':name,'password':password})
     
     
@@ -209,13 +194,14 @@ def delete_user(current_user,public_id):
     
     db.session.delete(user)
     db.session.commit()
+    
     return jsonify({'message':'The user has been deleted'})
 
 @app.route('/login', methods=['POST'])
 @cross_origin()
 def login():
     auth=request.authorization
-    
+ 
     if not auth or not auth.username or not auth.password:
         return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
 
@@ -228,7 +214,6 @@ def login():
         token=jwt.encode({'public_id':user.public_id,'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60)},app.config['SECRET_KEY'])
         
         return jsonify({'token': token.decode('UTF-8')})
-    
     
     return make_response('Could not verify',401,{'WWWW-Authenticate':'Basic realm="Login required!"'})
   
@@ -258,8 +243,7 @@ def get_one_question(current_user,question_id):
     question_data['text']=question.text
     question_data['ask']=question.ask
     question_data['help']=question.help
-  
-    
+     
     return jsonify(question_data)
 
 @app.route('/question', methods=['POST'])
@@ -274,8 +258,7 @@ def create_subject(current_user):
         db.session.add(new_question)
         db.session.commit()
         return jsonify({'message':'Question created!'})
-
-    
+  
 
 @app.route('/question/<question_id>',methods=['DELETE'])
 @token_required
@@ -291,13 +274,7 @@ def delete_question(current_user,question_id):
     return jsonify({'message':'Question has deleted'})
 
 
-@app.route('/matches', methods=['GET'])
-@token_required
-def get_user_matches(current_user):
-    
-    return ''
-
-#Ide kell egy olyan hogy egy felhasználó ne rakjon fel kérdést ha még nem kapott segítőt az előző kérdésre az adott tantárgyból(így nem tudja teleszemetelni az adatbázist)
+#Kiegészíteni,hogy a felhasználó ne lehessen a saját segítője
 @app.route('/ask/<question_text>', methods=['GET'])
 @token_required
 def ask(current_user,question_text):
@@ -322,8 +299,6 @@ def ask(current_user,question_text):
         #itt jön létre a chat
         #megkeresem azt a sort ahol üres a kérdező de van bent már segítő
         empty_asker=engine.execute(select(Question.helper).where(Question.asker=='').where(Question.text==question_text)).first()
-
-       
         create_chat(current_user.name,empty_asker[0],question_text,auth.password)
         update_statement=update(Question).where(Question.id==empty_asker_id[0]).values(asker=current_user.name)
         engine.execute(update_statement)
@@ -356,8 +331,7 @@ def help(current_user,question_text):
     
     update_statement=update(Question).where(Question.id==empty_asker_id[0]).values(helper=current_user.name)
     empty_helper=engine.execute(select(Question.asker).where(Question.helper=='').where(Question.text==question_text)).first()
-
-        #user_pw=engine.execute(select(User.password).where(Question.asker=='').where(Question.text==question_text)).first()
+    
     create_chat(current_user.name,empty_helper[0],question_text,auth.password)
     engine.execute(update_statement)
    
@@ -375,12 +349,5 @@ def create_chat(current_user,second_user,question_text,password):
     )
 
 
-
-
-
-
-
-  
-    
 if __name__ =='__main__':
     app.run(debug=True)
