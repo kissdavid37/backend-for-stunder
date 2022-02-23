@@ -151,6 +151,7 @@ def get_one_user(current_user):
     return jsonify({'user': user_data})
 
 
+@cross_origin()
 @app.route('/register', methods=['POST'])
 def register():
     name = request.json['name']
@@ -160,11 +161,13 @@ def register():
     description = request.json['description']
     hashed_password = generate_password_hash(password, method='sha256')
     if len(password) < 6:
-        return make_response('Could not verify', 400, {'WWWW-Authenticate': 'Basic realm="Rövid jelszó!"'})
+        return make_response('Rövid jelszó', 400, {'WWWW-Authenticate': 'Basic realm="Rövid jelszó!"'})
+    elif len(gender) < 2:
+        return make_response('Kötelező nemet választani', 409, {'WWWW-Authenticate': 'Basic realm="Kötelező nemet választani!"'})
     elif User.query.filter_by(name=name).first() is not None:
-        return make_response('Could not verify', 409, {'WWWW-Authenticate': 'Basic realm="Foglalt felhasználónév!"'})
+        return make_response('A felhasználónév már a nyivántartásban van', 409, {'WWWW-Authenticate': 'Basic realm="Foglalt felhasználónév!"'})
     elif User.query.filter_by(email=email).first() is not None:
-        return make_response('Could not verify', 409, {'WWWW-Authenticate': 'Basic realm="Foglalt email!"'})
+        return make_response('Az email foglalt', 409, {'WWWW-Authenticate': 'Basic realm="Foglalt email!"'})
 
     user = User(public_id=str(uuid.uuid4()), name=name, email=email,
                 password=hashed_password, gender=gender, description=description, admin=False)
@@ -368,4 +371,4 @@ def help(current_user, question_text):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
