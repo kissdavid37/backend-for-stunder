@@ -1,22 +1,14 @@
-#from crypt import methods
 from asyncio.windows_events import NULL
-from cgitb import text
 from email.policy import default
 from enum import unique
-from hashlib import md5
 from importlib import resources
 from importlib.metadata import metadata
 from os import stat
 from select import select
 from tkinter.messagebox import QUESTION
-from tkinter.tix import Select
-from turtle import title, update
-from venv import create
+from turtle import update
 from xmlrpc.client import Boolean
 from flask import Flask, jsonify, make_response, request, session
-import socketio
-import sqlalchemy
-import werkzeug
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
@@ -25,7 +17,6 @@ import jwt
 import datetime
 from flask_cors import CORS, cross_origin
 from sqlalchemy import ForeignKey, Integer, Table, Column, MetaData, Boolean, create_engine, String, insert, null, select, true, update, insert
-import requests
 
 
 app = Flask(__name__)
